@@ -17,7 +17,11 @@ const pool = new Pool({
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+// Serve from /public if it exists, otherwise serve from root
+const staticDir = require('fs').existsSync(path.join(__dirname, 'public'))
+  ? path.join(__dirname, 'public')
+  : __dirname;
+app.use(express.static(staticDir));
 
 const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 500 });
 app.use('/api/', limiter);
@@ -259,19 +263,21 @@ app.delete('/api/items/:id', auth, adminOnly, async (req, res) => {
 
 // ── SERVE CLIENT PORTAL PAGE ──────────────────────────────────────────────────
 app.get('/portal/:slug', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'portal.html'));
+  res.sendFile(path.join(staticDir, 'portal.html'));
 });
 
 // ── CATCH-ALL SPA ─────────────────────────────────────────────────────────────
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(staticDir, 'index.html'));
 });
 
 // ── START ─────────────────────────────────────────────────────────────────────
-initDB().then(() => {
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => console.log(`🚀 HorecaStore Project360 running on port ${PORT}`));
-}).catch(err => {
-  console.error('DB init failed:', err);
-  process.exit(1);
+// Listen FIRST so Render detects the port, then init DB
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 HorecaStore Project360 running on port ${PORT}`);
+  // Init DB after server is already listening
+  initDB().catch(err => {
+    console.error('⚠️  DB init error (will retry on first request):', err.message);
+  });
 });
